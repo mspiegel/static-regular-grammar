@@ -422,6 +422,11 @@ fn generate_typed<T: Token>(
 		generate_validation_function::<T>(&automaton)
 	};
 
+	#[cfg(feature="std")]
+	let error_impl = quote! { impl<T: ::core::fmt::Debug + ::core::fmt::Display> ::std::error::Error for #error<T> {} };
+	#[cfg(not(feature="std"))]
+	let error_impl = quote! { };
+
 	let mut tokens = quote! {
 		#[derive(Debug)]
 		#vis struct #error<T>(pub T);
@@ -432,7 +437,7 @@ fn generate_typed<T: Token>(
 			}
 		}
 
-		impl<T: ::core::fmt::Debug + ::core::fmt::Display> ::std::error::Error for #error<T> {}
+		#error_impl
 
 		impl #ident {
 			#[doc = #new_doc]
@@ -619,7 +624,7 @@ fn generate_typed<T: Token>(
 
 		let visit_bytes = if T::UNICODE {
 			quote! {
-				match std::str::from_utf8(v) {
+				match core::str::from_utf8(v) {
 					Ok(s) => #ident::new(s).map_err(|_| ()),
 					Err(e) => Err(())
 				}
@@ -680,7 +685,10 @@ fn generate_typed<T: Token>(
 	if let Some(buffer) = data.options.sized {
 		let buffer_ident = buffer.ident;
 		let owned_string_type = T::rust_owned_string_type();
-
+		#[cfg(feature="std")]
+		let owned_trait = quote! { ::std::borrow::ToOwned };
+		#[cfg(not(feature="std"))]
+		let owned_trait = quote! { ::alloc::borrow::ToOwned };
 		let owned_doc = format!("Owned {name}.");
 		let owned_new_doc = format!("Creates a new owned {name} by parsing the `input` value");
 		let owned_new_unchecked_doc = formatdoc!(
@@ -739,7 +747,7 @@ fn generate_typed<T: Token>(
 				}
 			}
 
-			impl ::std::borrow::ToOwned for #ident {
+			impl #owned_trait for #ident {
 				type Owned = #buffer_ident;
 
 				fn to_owned(&self) -> #buffer_ident {
@@ -769,20 +777,20 @@ fn generate_typed<T: Token>(
 		if !T::UNICODE && ascii {
 			tokens.extend(quote! {
 				impl #buffer_ident {
-					pub fn into_string(self) -> ::std::string::String {
+					pub fn into_string(self) -> String {
 						unsafe {
-							::std::string::String::from_utf8_unchecked(self.0)
+							String::from_utf8_unchecked(self.0)
 						}
 					}
 				}
 
-				impl TryFrom<::std::string::String> for #buffer_ident {
-					type Error = #error<::std::string::String>;
+				impl TryFrom<String> for #buffer_ident {
+					type Error = #error<String>;
 
-					fn try_from(input: ::std::string::String) -> Result<#buffer_ident, #error<::std::string::String>> {
+					fn try_from(input: String) -> Result<#buffer_ident, #error<String>> {
 						let bytes = input.into_bytes();
 						#buffer_ident::new(bytes).map_err(|#error(bytes)| unsafe {
-							#error(::std::string::String::from_utf8_unchecked(bytes))
+							#error(String::from_utf8_unchecked(bytes))
 						})
 					}
 				}
@@ -797,10 +805,10 @@ fn generate_typed<T: Token>(
 
 		if T::UNICODE || ascii {
 			tokens.extend(quote! {
-				impl ::std::str::FromStr for #buffer_ident {
-					type Err = #error<::std::string::String>;
+				impl ::core::str::FromStr for #buffer_ident {
+					type Err = #error<String>;
 
-					fn from_str(s: &str) -> Result<Self, #error<::std::string::String>> {
+					fn from_str(s: &str) -> Result<Self, #error<String>> {
 						let buffer = s.to_string();
 						buffer.try_into()
 					}
@@ -1005,7 +1013,7 @@ fn generate_typed<T: Token>(
 						#buffer_ident::new(v)
 					},
 					quote! {
-						match ::std::string::String::from_utf8(v) {
+						match String::from_utf8(v) {
 							Ok(s) => #buffer_ident::new(s).map_err(|#error(s)| #error(s.into_bytes())),
 							Err(e) => Err(#error(e.into_bytes()))
 						}
@@ -1015,7 +1023,7 @@ fn generate_typed<T: Token>(
 				(
 					quote! {
 						#buffer_ident::new(v.into_bytes()).map_err(|#error(bytes)| unsafe {
-							#error(::std::string::String::from_utf8_unchecked(bytes))
+							#error(String::from_utf8_unchecked(bytes))
 						})
 					},
 					quote! {

@@ -1,3 +1,6 @@
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 use static_regular_grammar::RegularGrammar;
 
 /// IRI.

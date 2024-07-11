@@ -84,7 +84,7 @@ impl Token for u8 {
 
 	fn rust_inner_into_ascii_method_body() -> Option<proc_macro2::TokenStream> {
 		Some(quote!(unsafe {
-			::std::string::String::from_utf8_unchecked(self.0)
+			String::from_utf8_unchecked(self.0)
 		}))
 	}
 
